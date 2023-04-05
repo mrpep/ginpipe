@@ -7,36 +7,50 @@ from pathlib import Path
 import time
 from loguru import logger
 
+def get_objs_from_module(m):
+    imported_objs = {}
+    for fn in inspect.getmembers(m, inspect.isfunction):
+        imported_objs[fn[1].__name__] = fn[1]
+    for c in inspect.getmembers(m, inspect.isclass):
+        imported_objs[c[1].__name__] = c[1]
+    return imported_objs
+
+def import_module(k):
+    if Path(k.replace('.','/')+'/__init__.py').exists():
+        spec = importlib.util.spec_from_file_location(k,k.replace('.','/')+'/__init__.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        imported_objs = get_objs_from_module(module)
+    elif importlib.find_loader(k) is not None:
+        module = importlib.import_module(k)
+        imported_objs = get_objs_from_module(module)
+    elif importlib.find_loader('.'.join(k.split('.')[:-1])) is not None:
+        str_parts = k.split('.')
+        module = '.'.join(str_parts[:-1])
+        module = importlib.import_module(module)
+        fn_name = str_parts[-1]
+        fn = getattr(module, fn_name)
+        imported_objs = {fn_name: fn}
+    else:
+        raise Exception(f'Could not find module {k}')
+
+    return module, imported_objs
+    
 def gin_configure_externals(flags):
     module_list = flags['module_list']
     ms = {}
-    print('Available objects in gin:')
+    log_str = '\nAvailable objects in gin:\n---------------------------------------------\n'
     for m in module_list:
         with open(m, 'r') as f:
             ls = f.read().splitlines()
         ms.update({l.split(':')[0].strip(): l.split(':')[1].strip() for l in ls})
     for k, v in ms.items():
-        try:
-            module = importlib.import_module(k)
-            print(v)
-            for fn in inspect.getmembers(module, inspect.isfunction):
-                print('\t'+fn[1].__name__)
-                gin.config.external_configurable(fn[1], module=v)
-            for c in inspect.getmembers(module, inspect.isclass):
-                try:
-                    print('\t'+c[1].__name__)
-                    gin.config.external_configurable(c[1], module=v)
-                except:
-                    from IPython import embed; embed()
-        except:
-            str_parts = k.split('.')
-            module = '.'.join(str_parts[:-1])
-            print(module)
-            fn_name = str_parts[-1]
-            print('\t'+fn_name)
-            module = importlib.import_module(module)
-            fn = getattr(module, fn_name)
-            gin.config.external_configurable(fn, v)
+        module, imported_objs = import_module(k)
+        log_str += f'{v}\n'
+        for obj_name, obj in imported_objs.items():
+            log_str += f'\t{obj_name}\n'
+            gin.config.external_configurable(obj, module=v)
+    logger.debug(log_str)
 
 def configure_defaults(state, config):
     def find_macro(key, config, mods):
@@ -128,11 +142,9 @@ def gin_parse_with_flags(state, flags):
         with open(c,'r') as f:
             config_i = f.read()
         consolidated_config += config_i + '\n'
-
     consolidated_config = apply_mods(consolidated_config, flags['mods'])
     state, consolidated_config = configure_defaults(state, consolidated_config)
     state, consolidated_config = process_appends(state, consolidated_config)
-
     gin.parse_config(consolidated_config)
     state.operative_config = gin.operative_config_str()
     state.config_str = consolidated_config
