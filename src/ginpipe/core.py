@@ -6,6 +6,8 @@ import inspect
 from pathlib import Path
 import time
 from loguru import logger
+import sys
+import ast
 
 def get_objs_from_module(m):
     imported_objs = {}
@@ -20,6 +22,10 @@ def import_module(k):
         spec = importlib.util.spec_from_file_location(k,k.replace('.','/')+'/__init__.py')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        sys.modules[module.__name__] = module
+        parent_module_path = module.__file__.replace('/'+k.replace('.','/')+'/__init__.py','')
+        if parent_module_path not in sys.path:
+            sys.path.append(parent_module_path)
         imported_objs = get_objs_from_module(module)
     elif importlib.find_loader(k) is not None:
         module = importlib.import_module(k)
@@ -136,12 +142,26 @@ def process_appends(state, config):
 
     return state, config
 
+def get_initial_state(state,config):
+    inits_keys = [l for l in config.split('\n') if l.startswith('$')]
+    for k in inits_keys:
+        key, val = k[1:].split('=')
+        try:
+            val = ast.literal_eval(val)
+        except:
+            pass
+        state[key] = val
+        config = config.replace(k,'')
+
+    return state, config
+
 def gin_parse_with_flags(state, flags):
     consolidated_config = ''
     for c in flags['config_path']:
         with open(c,'r') as f:
             config_i = f.read()
         consolidated_config += config_i + '\n'
+    state,consolidated_config = get_initial_state(state,consolidated_config)
     consolidated_config = apply_mods(consolidated_config, flags['mods'])
     state, consolidated_config = configure_defaults(state, consolidated_config)
     state, consolidated_config = process_appends(state, consolidated_config)
@@ -162,7 +182,7 @@ class State(dict):
         self.__dict__ = d
 
     def save(self, output_path):
-        d = {k:v for k,v in self.items()}
+        d = {k:v for k,v in self.items() if k not in self.get('keys_not_saved',[])}
         joblib.dump(d,output_path)
 
 def setup_gin(flags):
