@@ -8,13 +8,16 @@ import time
 from loguru import logger
 
 def gin_configure_externals(flags):
-    module_list = flags['module_list']
-    ms = {}
     print('Available objects in gin:')
-    for m in module_list:
-        with open(m, 'r') as f:
-            ls = f.read().splitlines()
-        ms.update({l.split(':')[0].strip(): l.split(':')[1].strip() for l in ls})
+    ms = {}
+    if 'module_list_str' in flags:
+        ms.update({l.split(':')[0].strip(): l.split(':')[1].strip() for l in flags['module_list_str'].split('\n')})
+    else:
+        module_list = flags['module_list']
+        for m in module_list:
+            with open(m, 'r') as f:
+                ls = f.read().splitlines()
+            ms.update({l.split(':')[0].strip(): l.split(':')[1].strip() for l in ls})
     for k, v in ms.items():
         try:
             module = importlib.import_module(k)
@@ -124,10 +127,14 @@ def process_appends(state, config):
 
 def gin_parse_with_flags(state, flags):
     consolidated_config = ''
-    for c in flags['config_path']:
-        with open(c,'r') as f:
-            config_i = f.read()
-        consolidated_config += config_i + '\n'
+    if 'config_str' in flags:
+        for c in flags['config_str']:
+            consolidated_config += c + '\n'
+    else:
+        for c in flags['config_path']:
+            with open(c,'r') as f:
+                config_i = f.read()
+            consolidated_config += config_i + '\n'
 
     consolidated_config = apply_mods(consolidated_config, flags['mods'])
     state, consolidated_config = configure_defaults(state, consolidated_config)
