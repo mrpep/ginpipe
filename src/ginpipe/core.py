@@ -27,16 +27,19 @@ def import_module(k):
         if parent_module_path not in sys.path:
             sys.path.append(parent_module_path)
         imported_objs = get_objs_from_module(module)
-    elif importlib.find_loader(k) is not None:
+    elif importlib.util.find_spec(k) is not None:
         module = importlib.import_module(k)
         imported_objs = get_objs_from_module(module)
-    elif importlib.find_loader('.'.join(k.split('.')[:-1])) is not None:
-        str_parts = k.split('.')
-        module = '.'.join(str_parts[:-1])
-        module = importlib.import_module(module)
-        fn_name = str_parts[-1]
-        fn = getattr(module, fn_name)
-        imported_objs = {fn_name: fn}
+    elif importlib.util.find_spec('.'.join(k.split('.')[:-1])) is not None:
+        try:
+            str_parts = k.split('.')
+            module = '.'.join(str_parts[:-1])
+            module = importlib.import_module(module)
+            fn_name = str_parts[-1]
+            fn = getattr(module, fn_name)
+            imported_objs = {fn_name: fn}
+        except:
+            from IPython import embed; embed()
     else:
         raise Exception(f'Could not find module {k}')
 
@@ -85,11 +88,13 @@ def configure_defaults(state, config):
     mods = {k.split('=')[0]: k.split('=')[1] for k in mods}
     for k,v in config_from_flags.items():
         already_exists = find_macro(k, config, mods)
+        print('{}: {}'.format(k, already_exists))
         if already_exists is None:
             if isinstance(v,str) and not v.startswith('%'):
                 v = "'{}'".format(v)
             config += "{}={}\n".format(k,v)
-    state.output_dir = config_from_flags['OUTPUT_DIR']
+        if k == 'OUTPUT_DIR':
+            state.output_dir = config_from_flags['OUTPUT_DIR'] if already_exists is None else already_exists.replace("'","")
     
     return state, config
 
