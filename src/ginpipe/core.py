@@ -27,16 +27,19 @@ def import_module(k):
         if parent_module_path not in sys.path:
             sys.path.append(parent_module_path)
         imported_objs = get_objs_from_module(module)
-    elif importlib.find_loader(k) is not None:
+    elif importlib.util.find_spec(k) is not None:
         module = importlib.import_module(k)
         imported_objs = get_objs_from_module(module)
-    elif importlib.find_loader('.'.join(k.split('.')[:-1])) is not None:
-        str_parts = k.split('.')
-        module = '.'.join(str_parts[:-1])
-        module = importlib.import_module(module)
-        fn_name = str_parts[-1]
-        fn = getattr(module, fn_name)
-        imported_objs = {fn_name: fn}
+    elif importlib.util.find_spec('.'.join(k.split('.')[:-1])) is not None:
+        try:
+            str_parts = k.split('.')
+            module = '.'.join(str_parts[:-1])
+            module = importlib.import_module(module)
+            fn_name = str_parts[-1]
+            fn = getattr(module, fn_name)
+            imported_objs = {fn_name: fn}
+        except:
+            from IPython import embed; embed()
     else:
         raise Exception(f'Could not find module {k}')
 
@@ -46,10 +49,15 @@ def gin_configure_externals(flags):
     module_list = flags['module_list']
     ms = {}
     log_str = '\nAvailable objects in gin:\n---------------------------------------------\n'
-    for m in module_list:
-        with open(m, 'r') as f:
-            ls = f.read().splitlines()
-        ms.update({l.split(':')[0].strip(): l.split(':')[1].strip() for l in ls})
+    if 'module_list_str' in flags:
+        ms.update({l.split(':')[0].strip(): l.split(':')[1].strip() for l in flags['module_list_str'].split('\n')})
+    else:
+        module_list = flags['module_list']
+        for m in module_list:
+            with open(m, 'r') as f:
+                ls = f.read().splitlines()
+            ms.update({l.split(':')[0].strip(): l.split(':')[1].strip() for l in ls})
+
     for k, v in ms.items():
         module, imported_objs = import_module(k)
         log_str += f'{v}\n'
@@ -80,11 +88,13 @@ def configure_defaults(state, config):
     mods = {k.split('=')[0]: k.split('=')[1] for k in mods}
     for k,v in config_from_flags.items():
         already_exists = find_macro(k, config, mods)
+        print('{}: {}'.format(k, already_exists))
         if already_exists is None:
             if isinstance(v,str) and not v.startswith('%'):
                 v = "'{}'".format(v)
             config += "{}={}\n".format(k,v)
-    state.output_dir = config_from_flags['OUTPUT_DIR']
+        if k == 'OUTPUT_DIR':
+            state.output_dir = config_from_flags['OUTPUT_DIR'] if already_exists is None else already_exists.replace("'","")
     
     return state, config
 
@@ -158,10 +168,14 @@ def get_initial_state(state,config):
 
 def gin_parse_with_flags(state, flags):
     consolidated_config = ''
-    for c in flags['config_path']:
-        with open(c,'r') as f:
-            config_i = f.read()
-        consolidated_config += config_i + '\n'
+    if 'config_str' in flags:
+        for c in flags['config_str']:
+            consolidated_config += c + '\n'
+    else:
+        for c in flags['config_path']:
+            with open(c,'r') as f:
+                config_i = f.read()
+            consolidated_config += config_i + '\n'
     state,consolidated_config = get_initial_state(state,consolidated_config)
     consolidated_config = apply_mods(consolidated_config, flags['mods'])
     state, consolidated_config = configure_defaults(state, consolidated_config)
