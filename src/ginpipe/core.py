@@ -128,6 +128,7 @@ def process_appends(state, config):
                     append_keys.append(k)
                 lines_to_erase.append(l)
             elif '=' in l:
+                print(l)
                 k,v = l.split('=')
                 k = add_prefix_to_key(prefix,k)
                 config_as_dict[k] = v
@@ -183,7 +184,13 @@ class State(dict):
 
     def save(self, output_path):
         d = {k:v for k,v in self.items() if k not in self.get('keys_not_saved',[])}
-        joblib.dump(d,output_path)
+        #To avoid corrupted saved artifacts, first save it to a temp and then rename:
+        temp_path = output_path.with_name('state_temp.pkl')
+        joblib.dump(d,temp_path)
+        if output_path.exists():
+            output_path.unlink()
+        temp_path.rename(output_path)
+
 
 def setup_gin(flags):
     state = State()
