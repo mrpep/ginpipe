@@ -57,7 +57,10 @@ def gin_configure_externals(flags):
             with open(m, 'r') as f:
                 ls = f.read().splitlines()
             ms.update({l.split(':')[0].strip(): l.split(':')[1].strip() for l in ls})
-
+        module_list_str = ""
+        for k,v in ms.items():
+            module_list_str += "{}: {}\n".format(k,v)
+        flags['module_list_str'] = module_list_str
     for k, v in ms.items():
         module, imported_objs = import_module(k)
         log_str += f'{v}\n'
@@ -172,10 +175,13 @@ def gin_parse_with_flags(state, flags):
         for c in flags['config_str']:
             consolidated_config += c + '\n'
     else:
+        flags['config_str'] = []
         for c in flags['config_path']:
             with open(c,'r') as f:
                 config_i = f.read()
+            flags['config_str'].append(config_i)
             consolidated_config += config_i + '\n'
+            
     state,consolidated_config = get_initial_state(state,consolidated_config)
     consolidated_config = apply_mods(consolidated_config, flags['mods'])
     state, consolidated_config = configure_defaults(state, consolidated_config)
