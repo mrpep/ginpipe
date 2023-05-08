@@ -169,6 +169,44 @@ def get_initial_state(state,config):
 
     return state, config
 
+def load_template(block_data, config_path):
+    template_path = Path(Path(config_path).parent, block_data['template'][1:-1])
+    with open(template_path, 'r') as f:
+        template = f.read()
+    block_data.pop('template')
+    for k,v in block_data.items():
+        template = template.replace('{'+k+'}', v[1:-1])
+    return [template]
+
+def process_templates(config, config_path):
+    lines = config.split('\n')
+    block_start = None
+    block_data = {}
+    i=0
+    new_lines = []
+    while i < len(lines):
+        if lines[i].strip() == '!load_template:':
+            block_start = i
+        elif block_start is not None:
+            if len(lines[i].lstrip()) < len(lines[i]):
+                #This means we are in an indented block
+                data_i = lines[i].split('=')
+                block_data[data_i[0].strip()] = data_i[1].strip()
+            else:
+                #Out of block, so we have gathered all info regarding the template loading
+                new_data = load_template(block_data, config_path)
+                new_lines.extend(new_data)
+                block_start = None
+                block_data = {}
+        else:
+            new_lines.append(lines[i])
+        i+=1
+    if block_start is not None:
+        new_data = load_template(block_data, config_path)
+        new_lines.extend(new_data)
+
+    return '\n'.join(new_lines)
+
 def gin_parse_with_flags(state, flags):
     consolidated_config = ''
     if 'config_str' in flags:
@@ -179,6 +217,7 @@ def gin_parse_with_flags(state, flags):
         for c in flags['config_path']:
             with open(c,'r') as f:
                 config_i = f.read()
+            config_i = process_templates(config_i, c)
             flags['config_str'].append(config_i)
             consolidated_config += config_i + '\n'
             
@@ -218,6 +257,8 @@ def setup_gin(flags):
     gin_configure_externals(flags)
     state = gin_parse_with_flags(state, flags)
     config_log_path = Path(state.output_dir,'config.gin')
+    if not config_log_path.parent.exists():
+        config_log_path.parent.mkdir(parents=True)
     with open(config_log_path,'w') as f:
         f.write(gin.config_str())
 
