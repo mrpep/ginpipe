@@ -217,6 +217,9 @@ def setup_gin(flags):
     state.flags = flags
     gin_configure_externals(flags)
     state = gin_parse_with_flags(state, flags)
+    config_log_path = Path(state.output_dir,'config.gin')
+    with open(config_log_path,'w') as f:
+        f.write(gin.config_str())
 
     return state
 
