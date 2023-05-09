@@ -125,26 +125,61 @@ def process_appends(state, config):
     append_keys = []
     lines_to_erase = []
     prefix = ''
+    list_unfinished=False
+    list_acc=''
+    unfinished_type = ''
+    unfinished_k = ''
     for l in lines:
-        if not (l.isspace() or l == ''):
+        if list_unfinished:
+            if unfinished_type == '+=':
+                lines_to_erase.append(l)
+            if ']' not in l:
+                list_acc += l.strip()
+            else:
+                list_acc += l.strip()
+                list_unfinished=False
+                if unfinished_type == '+=':
+                    if unfinished_k in config_as_dict:
+                        config_as_dict[unfinished_k] = concat_lists(config_as_dict[unfinished_k], list_acc)
+                        append_keys.append(unfinished_k)
+                    else:
+                        config_as_dict[unfinished_k] = list_acc
+                        append_keys.append(unfinished_k)
+                        lines_to_erase.append(l)
+                elif unfinished_type == '=':
+                    config_as_dict[unfinished_k] = list_acc
+                list_acc = ''
+
+
+        elif not (l.isspace() or l == ''):
             indent = n_indent(l)
             if indent == 0:
                 prefix = ''
             if '+=' in l:
                 k,v = l.split('+=')
                 k = add_prefix_to_key(prefix,k)
-                if k in config_as_dict:
-                    config_as_dict[k] = concat_lists(config_as_dict[k], v)
-                    append_keys.append(k)
-                else:
-                    config_as_dict[k] = v
-                    append_keys.append(k)
+                if ('[' in v) and (']' not in v):
+                    list_unfinished = True
+                    list_acc += v
+                    unfinished_type = '+='
+                    unfinished_k = k
+                elif ('[' in v) and (']' in v):
+                    if k in config_as_dict:
+                        config_as_dict[k] = concat_lists(config_as_dict[k], v)
+                    else:
+                        config_as_dict[k] = v
                 lines_to_erase.append(l)
+                append_keys.append(k)
             elif '=' in l:
-                print(l)
                 k,v = l.split('=')
                 k = add_prefix_to_key(prefix,k)
-                config_as_dict[k] = v
+                if ('[' not in v) or (('[' in v) and (']' in v)):
+                    config_as_dict[k] = v
+                else:
+                    list_unfinished = True
+                    list_acc += v
+                    unfinished_type = '='
+                    unfinished_k = k
             elif ':' in l:
                 prefix = l.split(':')[0]
     for l in lines_to_erase:
@@ -272,9 +307,9 @@ def save_state(state):
     state.save(output_path)
 
 @gin.configurable
-def execute_pipeline(state, tasks=None, execution_order='sequential', output_dir=None, cache=True):
+def execute_pipeline(state, tasks=None, execution_order='sequential', output_dir=None, cache=True, is_main=False):
     valid_execution_orders = ['sequential']
-    if (Path(state.output_dir,'state.pkl').exists()) and cache:
+    if (Path(state.output_dir,'state.pkl').exists()) and cache and is_main:
         state_ = joblib.load(Path(state.output_dir,'state.pkl'))
         for k,v in state_.items():
             if (k not in state) and (k != 'execution_times'):

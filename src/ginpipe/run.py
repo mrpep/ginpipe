@@ -17,7 +17,7 @@ def main():
 
     #Setup gin configs:
     state = setup_gin(flags)
-    execute_pipeline(state)
+    execute_pipeline(state, is_main=True)
 
 if __name__ == '__main__':
     main()
