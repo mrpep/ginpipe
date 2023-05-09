@@ -256,10 +256,10 @@ def gin_parse_with_flags(state, flags):
             flags['config_str'].append(config_i)
             consolidated_config += config_i + '\n'
             
-    state,consolidated_config = get_initial_state(state,consolidated_config)
     consolidated_config = apply_mods(consolidated_config, flags['mods'])
     state, consolidated_config = configure_defaults(state, consolidated_config)
     state, consolidated_config = process_appends(state, consolidated_config)
+    state,consolidated_config = get_initial_state(state,consolidated_config)
     gin.parse_config(consolidated_config)
     state.operative_config = gin.operative_config_str()
     state.config_str = consolidated_config
