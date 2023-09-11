@@ -9,6 +9,9 @@ from loguru import logger
 import sys
 import ast
 
+logger.remove()
+logger.add(sys.stderr, format="{time} {level} {message}", filter="my_module", level="WARNING", colorize=True)
+
 def get_objs_from_module(m):
     imported_objs = {}
     for fn in inspect.getmembers(m, inspect.isfunction):
@@ -31,15 +34,12 @@ def import_module(k):
         module = importlib.import_module(k)
         imported_objs = get_objs_from_module(module)
     elif importlib.util.find_spec('.'.join(k.split('.')[:-1])) is not None:
-        try:
-            str_parts = k.split('.')
-            module = '.'.join(str_parts[:-1])
-            module = importlib.import_module(module)
-            fn_name = str_parts[-1]
-            fn = getattr(module, fn_name)
-            imported_objs = {fn_name: fn}
-        except:
-            from IPython import embed; embed()
+        str_parts = k.split('.')
+        module = '.'.join(str_parts[:-1])
+        module = importlib.import_module(module)
+        fn_name = str_parts[-1]
+        fn = getattr(module, fn_name)
+        imported_objs = {fn_name: fn}
     else:
         raise Exception(f'Could not find module {k}')
 
