@@ -91,7 +91,6 @@ def configure_defaults(state, config):
     mods = {k.split('=')[0]: k.split('=')[1] for k in mods}
     for k,v in config_from_flags.items():
         already_exists = find_macro(k, config, mods)
-        print('{}: {}'.format(k, already_exists))
         if already_exists is None:
             if isinstance(v,str) and not v.startswith('%'):
                 v = "'{}'".format(v)
