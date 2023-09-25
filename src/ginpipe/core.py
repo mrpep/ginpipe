@@ -50,7 +50,7 @@ def gin_configure_externals(flags):
     ms = {}
     log_str = '\nAvailable objects in gin:\n---------------------------------------------\n'
     if 'module_list_str' in flags:
-        ms.update({l.split(':')[0].strip(): l.split(':')[1].strip() for l in flags['module_list_str'].split('\n')})
+        ms.update({l.split(':')[0].strip(): l.split(':')[1].strip() for l in flags['module_list_str'].split('\n') if ':' in l})
     else:
         module_list = flags['module_list']
         for m in module_list:
