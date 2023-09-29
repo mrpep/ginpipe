@@ -10,7 +10,10 @@ import sys
 import ast
 
 logger.remove()
-logger.add(sys.stderr, format="{time} {level} {message}", filter="my_module", level="WARNING", colorize=True)
+new_level = logger.level("INTRO", no=55, color="<yellow>", icon="")
+logger.add(sys.stderr, format="<blue>{time: YYYY/MM/D > HH:mm:ss}</blue> <level>{level} {message} </level>", filter=lambda record: record["level"].name != "INTRO",colorize=True, level='INFO')
+logger.add(sys.stderr, format="<cyan><bold>{message}</bold></cyan>", level="INTRO", colorize=True)
+
 
 def get_objs_from_module(m):
     imported_objs = {}
@@ -285,16 +288,34 @@ class State(dict):
         temp_path.rename(output_path)
 
 
-def setup_gin(flags):
+def setup_gin(flags, save_config=True):
+    welcome_message="""
+    
+  ______   __                      __                     
+ /      \ /  |                    /  |                    
+/$$$$$$  |$$/  _______    ______  $$/   ______    ______  
+$$ | _$$/ /  |/       \  /      \ /  | /      \  /      \ 
+$$ |/    |$$ |$$$$$$$  |/$$$$$$  |$$ |/$$$$$$  |/$$$$$$  |
+$$ |$$$$ |$$ |$$ |  $$ |$$ |  $$ |$$ |$$ |  $$ |$$    $$ |
+$$ \__$$ |$$ |$$ |  $$ |$$ |__$$ |$$ |$$ |__$$ |$$$$$$$$/ 
+$$    $$/ $$ |$$ |  $$ |$$    $$/ $$ |$$    $$/ $$       |
+ $$$$$$/  $$/ $$/   $$/ $$$$$$$/  $$/ $$$$$$$/   $$$$$$$/ 
+                        $$ |          $$ |                
+                        $$ |          $$ |                
+                        $$/           $$/                 
+
+    """
+    logger.log('INTRO',welcome_message)
     state = State()
     state.flags = flags
     gin_configure_externals(flags)
     state = gin_parse_with_flags(state, flags)
-    config_log_path = Path(state.output_dir,'config.gin')
-    if not config_log_path.parent.exists():
-        config_log_path.parent.mkdir(parents=True)
-    with open(config_log_path,'w') as f:
-        f.write(gin.config_str())
+    if save_config:
+        config_log_path = Path(state.output_dir,'config.gin')
+        if not config_log_path.parent.exists():
+            config_log_path.parent.mkdir(parents=True)
+        with open(config_log_path,'w') as f:
+            f.write(gin.config_str())
 
     return state
 
@@ -308,7 +329,9 @@ def save_state(state):
 @gin.configurable
 def execute_pipeline(state, tasks=None, execution_order='sequential', output_dir=None, cache=True, is_main=False):
     valid_execution_orders = ['sequential']
+    logger.info('Started execution of pipeline')
     if (Path(state.output_dir,'state.pkl').exists()) and cache and is_main:
+        logger.info('Loading state from previous experiment in {}'.format(Path(state.output_dir,'state.pkl')))
         state_ = joblib.load(Path(state.output_dir,'state.pkl'))
         for k,v in state_.items():
             if (k not in state) and (k != 'execution_times'):
