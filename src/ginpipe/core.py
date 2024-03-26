@@ -49,7 +49,6 @@ def import_module(k):
     return module, imported_objs
     
 def gin_configure_externals(flags):
-    module_list = flags['module_list']
     ms = {}
     log_str = '\nAvailable objects in gin:\n---------------------------------------------\n'
     if 'module_list_str' in flags:
