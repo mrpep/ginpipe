@@ -8,12 +8,18 @@ import time
 from loguru import logger
 import sys
 import ast
+import joblib
+from diff_match_patch import diff_match_patch
+from termcolor import colored 
 
 logger.remove()
 new_level = logger.level("INTRO", no=55, color="<yellow>", icon="")
 logger.add(sys.stderr, format="<blue>{time: YYYY/MM/D > HH:mm:ss}</blue> <level>{level} {message} </level>", filter=lambda record: record["level"].name != "INTRO",colorize=True, level='INFO')
 logger.add(sys.stderr, format="<cyan><bold>{message}</bold></cyan>", level="INTRO", colorize=True)
 
+def stdin_gen():
+    for x in sys.stdin.read().split():
+        yield x
 
 def get_objs_from_module(m):
     imported_objs = {}
@@ -282,7 +288,8 @@ class State(dict):
         d = {k:v for k,v in self.items() if k not in self.get('keys_not_saved',[])}
         #To avoid corrupted saved artifacts, first save it to a temp and then rename:
         temp_path = output_path.with_name('state_temp.pkl')
-        joblib.dump(d,temp_path)
+        with open(temp_path,'wb') as f:
+            joblib.dump(d,f)
         if output_path.exists():
             output_path.unlink()
         temp_path.rename(output_path)
@@ -312,8 +319,39 @@ $$    $$/ $$ |$$ |  $$ |$$    $$/ $$ |$$    $$/ $$       |
     state = gin_parse_with_flags(state, flags)
     if save_config:
         config_log_path = Path(state.output_dir,'config.gin')
-        if not config_log_path.parent.exists():
-            config_log_path.parent.mkdir(parents=True)
+        config_log_path.parent.mkdir(parents=True, exist_ok=True)
+        config_str = gin.config_str()
+        if config_log_path.exists():
+            with open(config_log_path,'r') as f:
+                existing_config_str = f.read()
+            dmp = diff_match_patch()
+            diffs = dmp.diff_main(config_str, existing_config_str)
+            diffs = [d for d in diffs if d[0] != 0]
+
+            logger.warning('A config already exists in {}'.format(config_log_path))
+            if len(diffs) > 0:
+                logger.info('Differences between configs are:')
+                diff_str = ""
+                for d in diffs:
+                    if d[0] == -1:
+                        diff_str += '{} {}'.format(colored('-','red'), d[1].replace('\n',''))
+                    elif d[0] == 1:
+                        diff_str += '{} {}'.format(colored('+','green'), d[1].replace('\n',''))
+                print(diff_str)
+            else:
+                logger.info('Both configs look the same')
+            print('Do you want to overwrite the experiment? y/[n]')
+            for var in sys.stdin:
+                var = var[0]
+                if var == 'n':
+                    logger.error('Aborting experiment')
+                    sys.exit(1)
+                elif var == 'y':
+                    logger.warning('Existing experiment will be overwritten')
+                else:
+                    raise Exception('Unrecognized input')
+                break
+
         with open(config_log_path,'w') as f:
             f.write(gin.config_str())
 
