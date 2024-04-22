@@ -10,7 +10,8 @@ import sys
 import ast
 import joblib
 from diff_match_patch import diff_match_patch
-from termcolor import colored 
+from termcolor import colored
+import subprocess
 
 logger.remove()
 new_level = logger.level("INTRO", no=55, color="<yellow>", icon="")
@@ -69,13 +70,22 @@ def gin_configure_externals(flags):
         for k,v in ms.items():
             module_list_str += "{}: {}\n".format(k,v)
         flags['module_list_str'] = module_list_str
+    lib_versions = {}
     for k, v in ms.items():
         module, imported_objs = import_module(k)
+        if hasattr(module, '__version__'):
+            lib_versions[k] = module.__version__
         log_str += f'{v}\n'
         for obj_name, obj in imported_objs.items():
             log_str += f'\t{obj_name}\n'
             gin.config.external_configurable(obj, module=v)
     logger.debug(log_str)
+    result = subprocess.run(['pip', 'list'], capture_output=True, text=True)
+    if result.returncode == 0:
+        lib_versions['pip_list'] = result.stdout
+    else:
+        logger.warning('Pip list retrieval failed: {}'.format(result.stderr))
+    return lib_versions
 
 def configure_defaults(state, config):
     def find_macro(key, config, mods):
@@ -314,7 +324,7 @@ $$    $$/ $$ |$$ |  $$ |$$    $$/ $$ |$$    $$/ $$       |
     logger.log('INTRO',welcome_message)
     state = State()
     state.flags = flags
-    gin_configure_externals(flags)
+    state['library_versions'] = gin_configure_externals(flags)
     state = gin_parse_with_flags(state, flags)
     if save_config:
         config_log_path = Path(state.output_dir,'config.gin')
