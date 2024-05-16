@@ -12,6 +12,7 @@ import joblib
 from diff_match_patch import diff_match_patch
 from termcolor import colored
 import subprocess
+import os
 
 logger.remove()
 new_level = logger.level("INTRO", no=55, color="<yellow>", icon="")
@@ -326,7 +327,7 @@ $$    $$/ $$ |$$ |  $$ |$$    $$/ $$ |$$    $$/ $$       |
     state.flags = flags
     state['library_versions'] = gin_configure_externals(flags)
     state = gin_parse_with_flags(state, flags)
-    if save_config:
+    if (save_config) and int(os.environ.get('LOCAL_RANK',0))==0:
         config_log_path = Path(state.output_dir,'config.gin')
         config_log_path.parent.mkdir(parents=True, exist_ok=True)
         config_str = gin.config_str()
@@ -400,6 +401,7 @@ def execute_pipeline(state, tasks=None, execution_order='sequential', output_dir
                 else:
                     state['execution_times'][name] = {'wall_time': wt, 'process_time': pt}
                     break
-            save_state(state)
+            if int(os.environ.get('LOCAL_RANK',0))==0:
+                save_state(state)
     else:
         raise Exception('Execution order not recognized: {}. The following values are allowed: {}'.format(execution_order, valid_execution_orders))
