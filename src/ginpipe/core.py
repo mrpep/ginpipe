@@ -283,26 +283,64 @@ def gin_parse_with_flags(state, flags):
     state.config_str = consolidated_config
     return state
 
-class State(dict):
-    __getattr__ = dict.__getitem__
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
+class State:
+    _used_keys = set()
+    _internal_state = {}
 
     def __getstate__(self):
-        return self.__dict__
+        return self._internal_state
     
     def __setstate__(self,d):
-        self.__dict__ = d
+        self._internal_state = d
+
+    def __setattr__(self, k, v):
+        self._used_keys.add(k)
+        self._internal_state[k] = v
+
+    def __setitem__(self, k, v):
+        self._used_keys.add(k)
+        self._internal_state[k] = v
+
+    def __getitem__(self, k):
+        return self._internal_state[k]
+    
+    def __getattr__(self, k):
+        return self._internal_state[k]
+    
+    def __contains__(self, k):
+        return k in self._internal_state
+    
+    def get(self, *args, **kwargs):
+        return self._internal_state.get(*args, **kwargs)
+    
+    def keys(self):
+        return self._internal_state.keys()
+    
+    def values(self):
+        return self._internal_state.values()
+    
+    def items(self):
+        return self._internal_state.items()
+    
+    def setdefault(self, *args, **kwargs):
+        self._internal_state.setdefault(*args, **kwargs)
+    
+    def _reset_used_keys(self):
+        self._used_keys.clear()
+
+    def get_used_keys(self):
+        return self._used_keys
 
     def save(self, output_path):
-        d = {k:v for k,v in self.items() if k not in self.get('keys_not_saved',[])}
-        #To avoid corrupted saved artifacts, first save it to a temp and then rename:
-        temp_path = output_path.with_name('state_temp.pkl')
-        with open(temp_path,'wb') as f:
-            joblib.dump(d,f)
-        if output_path.exists():
-            output_path.unlink()
-        temp_path.rename(output_path)
+        for k in self.get_used_keys():
+            if k not in self.get('keys_not_saved',[]):
+                k_out_path = Path(output_path, f'{k}.pkl')
+                k_temp_path = Path(output_path, f'tmp_{k}.pkl')
+                joblib.dump(self[k],k_temp_path)
+                if k_out_path.exists():
+                    k_out_path.unlink()
+                k_temp_path.rename(k_out_path)
+        self._reset_used_keys()
 
 
 def setup_gin(flags, save_config=True):
@@ -368,9 +406,9 @@ $$    $$/ $$ |$$ |  $$ |$$    $$/ $$ |$$    $$/ $$       |
     return state
 
 def save_state(state):
-    output_path = Path(state.output_dir,'state.pkl')
-    if not output_path.parent.exists():
-        output_path.parent.mkdir(parents=True)
+    output_path = Path(state.output_dir,'state')
+    if not output_path.exists():
+        output_path.mkdir(parents=True)
     state.operative_config = gin.operative_config_str()
     state.save(output_path)
 
@@ -384,11 +422,17 @@ def execute_pipeline(state, tasks=None, execution_order='sequential', output_dir
         for k,v in state_.items():
             if (k not in state) and (k != 'execution_times'):
                 state[k] = v
+    elif (Path(state.output_dir,'state').exists()) and cache and is_main:
+        for f in Path(state.output_dir, 'state').glob('*.pkl'):
+            k = f.stem
+            if (k not in state) and (k != 'execution_times'):
+                state[k] = joblib.load(f)
     if execution_order == 'sequential':
         for t in tasks:
             logger.info('Running {}'.format(t.__name__))
             pt = time.process_time()
             wt = time.time()
+            state._reset_used_keys()
             state = t(state)
             pt = time.process_time() - pt
             wt = time.time() - wt
