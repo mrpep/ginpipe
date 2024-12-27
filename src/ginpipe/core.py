@@ -12,6 +12,9 @@ import joblib
 from diff_match_patch import diff_match_patch
 from termcolor import colored
 import subprocess
+import re
+import ast
+from sympy import sympify
 
 logger.remove()
 new_level = logger.level("INTRO", no=55, color="<yellow>", icon="")
@@ -259,6 +262,33 @@ def process_templates(config, config_path):
 
     return '\n'.join(new_lines)
 
+def process_operations(state, config):
+    # Variable values
+    macros = {l.split('=')[0]: l.split('=')[1] for l in config.split('\n') if ('=' in l) and ('.' not in l.split('=')[0]) and (not l.startswith(' '))}
+    # Find lines with operations
+    pattern = r'\$\((.*?)\)'
+    pattern_macro = r'%([A-Z_]+)'
+    
+    def replace_placeholder(match):
+        var_name = match.group(1)  # Extract the variable name after '%'
+        return str(macros.get(var_name, f"%{var_name}"))  # Replace with the value or leave as-is
+
+    new_l = []
+    for l in config.split('\n'):
+        matches = re.findall(pattern, l)
+        replacements = [re.sub(pattern_macro, replace_placeholder, m) for m in matches]
+        for m,r in zip(matches, replacements):
+            rexpr = sympify(r)
+            if not rexpr.is_integer:
+                r_str = str(rexpr.evalf())
+            else:
+                r_str = str(rexpr)
+            l = l.replace(f'$({m})', r_str)
+        new_l.append(l)
+    new_config = '\n'.join(new_l)
+    
+    return state, new_config
+
 def gin_parse_with_flags(state, flags):
     consolidated_config = ''
     if 'config_str' in flags:
@@ -276,6 +306,7 @@ def gin_parse_with_flags(state, flags):
     consolidated_config = apply_mods(consolidated_config, flags['mods'])
     state, consolidated_config = configure_defaults(state, consolidated_config)
     state, consolidated_config = process_appends(state, consolidated_config)
+    state, consolidated_config = process_operations(state, consolidated_config)
     state,consolidated_config = get_initial_state(state,consolidated_config)
     gin.parse_config(consolidated_config)
     state.operative_config = gin.operative_config_str()
